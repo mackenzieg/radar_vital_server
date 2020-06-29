@@ -13,6 +13,9 @@ global xvals
 global yvals
 first_config = True
 
+local_ip = socket.gethostbyname(socket.gethostname())
+PORT = 4242
+
 def signal_handler(signal, frame):
     # close the socket here
     sys.exit(0)
@@ -37,7 +40,7 @@ def process_data(json_data):
 
 signal.signal(signal.SIGINT, signal_handler)
 
-server_address = ('192.168.0.101', 4242)
+server_address = (local_ip, PORT)
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
