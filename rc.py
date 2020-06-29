@@ -2,7 +2,7 @@
 class RadarConfig:
 
     # Time in seconds to buffer slow time data
-    slow_time_buffer_sec = 8
+    slow_time_buffer_sec = 16
 
     def __init__(self, radar_config_json):
         self.update_vals(radar_config_json)
@@ -33,4 +33,5 @@ class RadarConfig:
         self.range_value_per_bin = 300000 / (self.bandwidth_khz * 2 * (self.range_fft_size / self.num_samples_per_chirp))
 
         self.slow_time_fft_size = self.slow_time_buffer_sec * self.frame_rate
+        self.slow_time_freq_resolution = (1 / self.frame_rate) / (self.slow_time_fft_size)
 
