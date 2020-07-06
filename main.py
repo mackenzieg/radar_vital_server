@@ -31,7 +31,8 @@ def process_config(json_config):
         radar_config = RadarConfig(config)
         radar_dsp = RadarDSP(radar_config)
     else:
-        radar_config.update_vals(config)
+        radar_config.update_config(config)
+        radar_dsp.update_config(radar_config)
 
     first_config = False
 

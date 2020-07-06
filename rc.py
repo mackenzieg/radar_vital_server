@@ -5,9 +5,9 @@ class RadarConfig:
     slow_time_buffer_sec = 16
 
     def __init__(self, radar_config_json):
-        self.update_vals(radar_config_json)
+        self.update_config(radar_config_json)
 
-    def update_vals(self, config):
+    def update_config(self, config):
 
         self.range_resolution           = config["range_resolution"]
         self.maximum_range              = config["maximum_range"]
