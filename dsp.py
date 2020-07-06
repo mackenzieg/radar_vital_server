@@ -12,7 +12,7 @@ class RadarDSP:
 
     important_range = 1
     bin_range = 1
-    integrate_range = 1
+    integrate_range = 0
 
     def __init__(self, radar_config):
         self.update_config(radar_config)
@@ -50,23 +50,23 @@ class RadarDSP:
         y = lfilter(b, a, data)
         return y
 
-    def graph_range_fft(self, ax):
-        plt.plot(self.r_xvals, np.absolute(self.circular_buff_mti[:, self.circular_buff_mti.shape[1] - 1]))
-        plt.ylim(0, 0.004)
+    def graph_range_fft(self):
+        plt.plot(self.r_xvals, np.absolute(self.circular_buff_mti[:, self.circular_buff_mti.shape[1] - 2]))
+        plt.ylim(0, 0.05)
 
     def graph_slow_time(self):
         exit(0)
 
     def process_packet(self, json_data):
-        real = np.array(json_data["data"]["real"])
-        imag = np.array(json_data["data"]["imag"])
+        chirp = np.array(json_data["data"]["frame"])
 
-        complex = real + 1j * imag
+        complex = rfft(chirp)
 
         self.circular_buff = np.roll(self.circular_buff, -1, axis=1)
-        self.circular_buff[:, self.circular_buff.shape[1] - 1] = complex
+        self.circular_buff[:, self.circular_buff.shape[1] - 1] = complex[0:len(complex) - 1]
 
         self.circular_buff_mti = np.roll(self.circular_buff, -1, axis=1)
+
         # Remove clutter
         for i in range(len(self.mti_image)):
             self.mti_image[i] = complex[i] - np.average(self.circular_buff[i])
@@ -157,11 +157,14 @@ class RadarDSP:
 
         #plt.plot(self.st_fft_xvals, slow_time_fft)
         #plt.plot(self.st_xvals, filter_slow_time)
-        plt.plot(self.st_xvals, slow_time_abs)
-        #plt.ylim(-0.001, 0.001)
+        #plt.plot(self.st_xvals, slow_time_abs)
+        plt.plot(self.st_xvals, np.absolute(self.circular_buff[10]))
+        #plt.ylim(0.8, 1.0)
 
         #if (len(indexes) > 0):
         #    plt.plot(self.st_xvals[indexes], filter_slow_time[indexes], 'xr')
+
+        #self.graph_range_fft()
 
         plt.draw()
 
