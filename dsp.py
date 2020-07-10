@@ -12,7 +12,7 @@ class RadarDSP:
 
     important_range = 1
     bin_range = 1
-    integrate_range = 1
+    integrate_range = 2
 
     def __init__(self, radar_config):
         self.update_config(radar_config)
@@ -37,7 +37,13 @@ class RadarDSP:
 
         self.run_count = 0
 
-        plt.ion()
+
+        self.plot_ranges = 2
+        self.fig, self.ax = plt.subplots(self.plot_ranges * 2 + 1)
+
+        #plt.ion()
+
+        print ("FFT BR resolution: " + str(60 * self.st_resolution_hz))
 
     def butter_lowpass(self, cutoff, fs, order=5):
         nyq = 0.5 * fs
@@ -82,6 +88,38 @@ class RadarDSP:
         #        max_avg = avg
         #        max_avg_index = i
 
+        min_range = self.important_bin - self.plot_ranges
+        if (min_range < 0):
+            min_range = 0
+
+        max_range = self.important_bin + self.plot_ranges
+        if (max_range > int(self.config.range_fft_size / 2) - 1):
+            max_range = int(self.config.range_fft_size / 2) - 1
+
+
+        if (self.run_count == 0):
+            x = 0
+            for i in range(min_range, max_range + 1):
+                self.ax[x].plot(self.st_xvals, np.absolute(self.circular_buff[i]))
+                x += 1
+
+            plt.draw()
+
+            plt.pause(0.00001)
+
+            #plt.cla()
+            x = 0
+            for i in range(min_range, max_range + 1):
+                self.ax[x].cla()
+                x += 1
+
+
+        self.run_count += 1
+        if (self.run_count % self.config.frame_rate == self.config.frame_rate - 1):
+            self.run_count = 0
+
+        return
+
         max_delta = 0
         max_delta_index = 0
 
@@ -121,9 +159,8 @@ class RadarDSP:
 
         predicted_br = len(indexes) / self.config.slow_time_buffer_sec * 60
 
-        if (self.run_count == 0):
-            print ("Edge BR prediction: " + str(predicted_br))
-
+        #if (self.run_count == 0):
+            #print ("Edge BR prediction: " + str(predicted_br))
 
         lower_limit = 0
         upper_limit = int(0.8 / self.st_resolution_hz)
@@ -151,9 +188,7 @@ class RadarDSP:
         breathing_hz = fft_max_power_idx * self.st_resolution_hz
 
         if (self.run_count == 0):
-            print ("FFT BR resolution: " + str(60 * self.st_resolution_hz))
             print ("FFT BR prediction: " + str(60 * breathing_hz))
-            print ("FFT BR weighting prediction: " + str(60 * weighting * self.st_resolution_hz))
 
         #plt.plot(self.st_fft_xvals, slow_time_fft)
         #plt.plot(self.st_xvals, filter_slow_time)
