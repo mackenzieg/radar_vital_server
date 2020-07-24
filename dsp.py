@@ -1,17 +1,21 @@
 import matplotlib.pyplot as plt
-from scipy.fft import rfft, ifft
+import pywt
+from scipy.fft import fft, ifft
 from scipy.signal import medfilt
 from scipy.signal import find_peaks
 from scipy.signal import savgol_filter
 from scipy.signal import butter, lfilter
 import numpy as np
+import collections
 
 import peakutils
+from denoise import Denoiser
+from PyEMD import EMD
 
 class RadarDSP:
 
     important_range = 1
-    bin_range = 1
+    bin_range = 6
     integrate_range = 2
 
     def __init__(self, radar_config):
@@ -23,25 +27,43 @@ class RadarDSP:
         self.st_xvals = np.linspace(0, int(radar_config.slow_time_buffer_sec), int(radar_config.slow_time_fft_size))
         # Slow time FFT xvals
         self.st_resolution_hz = radar_config.frame_rate / radar_config.slow_time_fft_size
+
+        # Slow time xvals
         self.st_fft_xvals = np.linspace(0, int(radar_config.slow_time_fft_size), int(radar_config.slow_time_fft_size))
         self.st_fft_xvals *= self.st_resolution_hz
+
         # Range FFT xvals
         self.r_xvals = np.linspace(0, int(radar_config.range_fft_size / 2), int(radar_config.range_fft_size / 2))
         self.r_xvals = self.r_xvals * radar_config.range_resolution
 
         self.important_bin = int(self.important_range / radar_config.range_resolution)
+
+        # Window Buffers
         self.circular_buff = np.zeros((int(radar_config.range_fft_size / 2), int(radar_config.slow_time_fft_size)), dtype=complex)
         self.circular_buff_mti = np.zeros((int(radar_config.range_fft_size / 2), int(radar_config.slow_time_fft_size)), dtype=complex)
 
         self.mti_image = np.zeros(int(radar_config.range_fft_size / 2), dtype=complex)
 
+        self.object_distance_window_size = radar_config.frame_rate * 4
+        self.object_distance_idx = 0
+        self.object_distance_buff_ptp = np.zeros(int(self.object_distance_window_size))
+
         self.run_count = 0
 
+        self.window_count = 0
+        self.window_size = radar_config.frame_rate * 1
 
-        self.plot_ranges = 2
-        self.fig, self.ax = plt.subplots(self.plot_ranges * 2 + 1)
+        self.peak_search_window_size = radar_config.frame_rate * 8
 
-        #plt.ion()
+        #self.fig, self.ax = plt.subplots(self.plot_ranges * 2 + 1)
+        self.fig, self.ax = plt.subplots(5)
+
+        self.svd_denoiser = Denoiser()
+        self.emd = EMD()
+
+        self.temp_first_time_colorbar = False
+
+        plt.ion()
 
         print ("FFT BR resolution: " + str(60 * self.st_resolution_hz))
 
@@ -63,21 +85,162 @@ class RadarDSP:
     def graph_slow_time(self):
         exit(0)
 
-    def process_packet(self, json_data):
-        real = np.array(json_data["data"]["real"])
-        imag = np.array(json_data["data"]["imag"])
+    def process_range_bin(self, bin_num, graph_idx):
+        slow_time_image = np.absolute(self.circular_buff[bin_num])
 
-        complex = real + 1j * imag
+        denoised = self.svd_denoiser.denoise(slow_time_image, int(self.config.slow_time_fft_size / 16))
+
+        # Wavelet Process
+        wavelets = pywt.wavedec(denoised, 'dmey', level=4)
+
+        # Empirical Mode Decomposition Process
+        imfs = self.emd.emd(denoised)
+
+        #self.ax[i].plot(slow_time_image)
+        #i += 1
+        self.ax[graph_idx].plot(denoised)
+
+        #for n, imf in enumerate(imfs):
+        #    if i >= 9:
+        #        break
+        #    self.ax[i].plot(imf)
+        #    i += 1
+
+        #for n, imf in enumerate(imfs):
+
+        #for i, wavelet in enumerate(wavelets):
+        #    self.ax[i + 2].plot(wavelet)
+
+    def object_bin_estimate(self):
+        # Determine object range
+        min_range = self.important_bin - self.bin_range
+        if (min_range < 0):
+            min_range = 0
+
+        max_range = self.important_bin + self.bin_range
+        if (max_range > int(self.config.range_fft_size / 2) - 1):
+            max_range = int(self.config.range_fft_size / 2) - 1
+
+        highest_ptp_power_idx = 0
+        highest_ptp_power = 0
+
+        start_idx = int(self.config.slow_time_fft_size - self.peak_search_window_size - 1)
+        end_idx = int(self.config.slow_time_fft_size - 1)
+        for i in range(min_range, max_range + 1):
+            power = np.absolute(np.max(self.circular_buff_mti[i][start_idx:end_idx].real) - np.min(self.circular_buff_mti[i][start_idx:end_idx].real))
+
+            if (power > highest_ptp_power):
+                highest_ptp_power = power
+                highest_ptp_power_idx = i
+
+        self.object_distance_buff_ptp[int(self.object_distance_idx)] = int(highest_ptp_power_idx)
+        self.object_distance_idx += 1
+        self.object_distance_idx %= self.object_distance_window_size
+
+        estimated_range_bin_ptp = np.average(self.object_distance_buff_ptp)
+        estimated_range_bin_ptp = int(round(estimated_range_bin_ptp))
+
+        return estimated_range_bin_ptp
+
+    def process_packet(self, json_data):
+        chirp = np.array(json_data["data"]["frame"])
+        complex = fft(chirp)
+        complex = complex[0:int(complex.size / 2)]
 
         self.circular_buff = np.roll(self.circular_buff, -1, axis=1)
         self.circular_buff[:, self.circular_buff.shape[1] - 1] = complex
 
-        self.circular_buff_mti = np.roll(self.circular_buff, -1, axis=1)
         # Remove clutter
         for i in range(len(self.mti_image)):
             self.mti_image[i] = complex[i] - np.average(self.circular_buff[i])
 
+        self.circular_buff_mti = np.roll(self.circular_buff_mti, -1, axis=1)
         self.circular_buff_mti[:, self.circular_buff_mti.shape[1] - 1] = self.mti_image
+
+        self.run_count += 1
+
+        if (self.run_count < self.config.slow_time_fft_size):
+            return
+
+        np.savez('data', buff=self.circular_buff, buff_mti=self.circular_buff_mti)
+
+        exit(-1)
+
+        estimated_range_bin = self.object_bin_estimate()
+
+        # Update graph every window count
+        self.window_count += 1
+        if (self.window_count < self.window_size):
+            return
+        else:
+            self.window_count = 0
+
+        print ("Object estimated range: " + str(estimated_range_bin * self.config.range_resolution) + "m")
+        print ("Object estimated bin: " + str(estimated_range_bin))
+
+        slow_time = self.circular_buff_mti[estimated_range_bin]
+
+        i = 0
+        self.ax[i].plot(self.st_xvals, self.circular_buff[estimated_range_bin - 2].real)
+        self.ax[i].set_title("Range bin: " + str(estimated_range_bin - 2))
+        i += 1
+
+        self.ax[i].plot(self.st_xvals, self.circular_buff[estimated_range_bin - 1].real)
+        self.ax[i].set_title("Range bin: " + str(estimated_range_bin - 1))
+        i += 1
+
+        self.ax[i].plot(self.st_xvals, self.circular_buff[estimated_range_bin].real)
+        self.ax[i].set_title("Range bin: " + str(estimated_range_bin))
+
+        i += 1
+        self.ax[i].plot(self.st_xvals, self.circular_buff[estimated_range_bin + 1].real)
+        self.ax[i].set_title("Range bin: " + str(estimated_range_bin + 1))
+
+        i += 1
+        self.ax[i].plot(self.st_xvals, self.circular_buff[estimated_range_bin + 2].real)
+        self.ax[i].set_title("Range bin: " + str(estimated_range_bin + 2))
+
+        #plt.imshow(np.absolute(self.circular_buff_mti), interpolation='nearest', aspect='auto')
+
+        #if(self.temp_first_time_colorbar == False):
+        #    plt.colorbar()
+        self.temp_first_time_colorbar = True
+
+        plt.draw()
+
+        plt.pause(0.00001)
+
+        self.ax[0].cla()
+        self.ax[1].cla()
+        self.ax[2].cla()
+        self.ax[3].cla()
+        self.ax[4].cla()
+        #np.savez('data', self.circular_buff)
+
+    def temp_process_packet(self, json_data):
+        chirp = np.array(json_data["data"]["frame"])
+        complex = fft(chirp)
+        complex = complex[0:int(complex.size / 2)]
+
+        self.circular_buff = np.roll(self.circular_buff, -1, axis=1)
+        self.circular_buff[:, self.circular_buff.shape[1] - 1] = complex
+
+        # Remove clutter
+        for i in range(len(self.mti_image)):
+            self.mti_image[i] = complex[i] - np.average(self.circular_buff[i])
+
+        self.circular_buff_mti = np.roll(self.circular_buff, -1, axis=1)
+        self.circular_buff_mti[:, self.circular_buff_mti.shape[1] - 1] = self.mti_image
+
+        plt.plot(np.absolute(self.mti_image))
+
+        plt.draw()
+
+        plt.pause(0.00001)
+
+        plt.cla()
+
+        return
 
         #max_avg = -1
         #max_avg_index = 0
@@ -192,7 +355,9 @@ class RadarDSP:
 
         #plt.plot(self.st_fft_xvals, slow_time_fft)
         #plt.plot(self.st_xvals, filter_slow_time)
-        plt.plot(self.st_xvals, slow_time_abs)
+        #plt.plot(self.st_xvals, slow_time_abs)
+        plt.imshow(np.absolute(st_buffer), interpolation='nearest', aspect='auto')
+        plt.colorbar()
         #plt.ylim(-0.001, 0.001)
 
         #if (len(indexes) > 0):

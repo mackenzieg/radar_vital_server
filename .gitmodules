@@ -1,0 +1,6 @@
+[submodule "externals/denoise"]
+	path = externals/denoise
+	url = https://github.com/nerdull/denoise.git
+[submodule "externals/PyEMD"]
+	path = externals/PyEMD
+	url = https://github.com/laszukdawid/PyEMD
