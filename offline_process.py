@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import pywt
 from scipy.fft import fft, ifft
 from scipy.signal import medfilt
+from scipy.signal import find_peaks_cwt
 from scipy.signal import find_peaks
 from scipy.signal import savgol_filter
 from scipy.signal import detrend
@@ -9,6 +10,7 @@ from scipy.signal import butter, lfilter
 from scipy.signal import argrelextrema
 from scipy.signal import correlate
 from scipy.signal import cwt
+from scipy.stats import linregress
 import numpy as np
 
 import peakutils
@@ -52,7 +54,7 @@ def std_windowed(st_buffer_mti):
 
     max_sd = 0
     max_sd_idx = 0
-    for i in range(st_buffer_mti.shape[0]):
+    for i in range(1, st_buffer_mti.shape[0]):
         signal = st_buffer[i]
 
         stds = np.zeros(int(slow_time_fft_size / window_size))
@@ -90,17 +92,13 @@ def std_windowed(st_buffer_mti):
 
 def get_peaks(signal):
     max_val = np.max(signal)
-    if (max_val == 0):
-        max_val = 0.0000001
 
-    return peakutils.indexes(signal, thres=0.06/max_val, min_dist=int(frame_rate * 1.7))
+    return peakutils.indexes(signal, thres=0.2*max_val, min_dist=int(frame_rate * 1.7))
 
 
-file = open('data.txt')
-lines = file.readlines()
-
-st_buffer = np.load('data.npz')['buff']
-st_buffer_mti = np.load('data.npz')['buff_mti']
+file_path = "data.npz"
+st_buffer = np.load(file_path)['buff']
+st_buffer_mti = np.load(file_path)['buff_mti']
 
 for i in range(st_buffer.shape[0]):
     st_buffer_mti[i] = st_buffer[i] - np.average(st_buffer[i])
@@ -120,7 +118,7 @@ for i in range(st_buffer.shape[0]):
 max_ptp_idx = std_windowed(st_buffer_mti)
 print ("Windowd std: " + str(max_ptp_idx))
 
-corr_idx = tools.auto_corr(st_buffer_mti)
+corr_idx = tools.auto_corr(st_buffer_mti, frame_rate)
 print ("Correlation: " + str(corr_idx))
 
 max_ptp_idx = tools.track_target(st_buffer_mti)
@@ -134,13 +132,64 @@ plt.colorbar()
 plt.xlabel("Time (s)")
 plt.ylabel("Bin number")
 
-fig, ax = plt.subplots(5)
+fig, ax = plt.subplots(10)
 
-range_bin = 3
+print ("----------------------------------")
+range_bin = 2
 i = 0
-for x in range(max_ptp_idx, max_ptp_idx + range_bin + 2):
+for x in range(corr_idx[0] - range_bin, corr_idx[0] + range_bin + 1):
     ax[i].plot(st_xvals, st_buffer_mti[x].real)
-    ax[i].set_title("Real bin: " + str(x))
+    ax[i].set_title("Bin: " + str(x))
+    i += 1
+
+    signal = st_buffer_mti[x].real
+    signal -= np.mean(signal)
+    n = signal.size
+
+    result = np.correlate(signal, signal, mode='same')
+
+    # Center autocorrelation coefficients with lag 1 to index 0
+    acorr = result[n//2 + 1:] / (signal.var() * np.arange(n-1, n//2, -1))
+
+    # Mirror array to perform more accurate peak detection
+    mirror_acorr = np.concatenate((acorr[::-1], acorr))
+
+    length = len(acorr)
+    x_test = np.arange(0, length)
+
+    # Possible breathing rates to test
+    min_br_hz = frame_rate // 0.05 # 3 bpm
+    max_br_hz = frame_rate // 0.8 # 48 bpm
+    #ranges = np.arange(frame_rate // max_br_hz - 1, frame_rate // min_br_hz)
+
+    # Find peaks of highest correlation coefficients
+    #peaks = find_peaks_cwt(mirror_acorr, ranges)
+    peaks = find_peaks(mirror_acorr, distance=max_br_hz-1, prominence=0.4)
+    peaks = peaks[0]
+
+    # Remove peaks with lag time below fs
+    #peaks = peaks[peaks > frame_rate]
+
+    #print ("Index: " + str(x))
+    #print (peaks)
+
+    slope, intercept, r_value, p_value, std_err = linregress(x_test, acorr)
+    print ("Index " + str(x))
+    print (r_value)
+
+    #print ("r_value, std_err: " + str(r_value**2) + " " + str(std_err))
+
+    # Get maximum peak idx
+    #idx_max_peak = peaks[np.argmax(mirror_acorr[peaks])]
+
+
+    # First peak is lag time
+    #lag = idx_max_peak + 1
+
+    #r = acorr[lag - 1]
+
+
+    ax[i].plot(mirror_acorr)
     i += 1
 
 #for x in range(max_ptp_idx + 1, max_ptp_idx + range_bin + 2):

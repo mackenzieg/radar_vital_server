@@ -67,6 +67,8 @@ class RadarDSP:
 
         print ("FFT BR resolution: " + str(60 * self.st_resolution_hz))
 
+        self.file_count = 0
+
     def butter_lowpass(self, cutoff, fs, order=5):
         nyq = 0.5 * fs
         normal_cutoff = cutoff / nyq
@@ -162,7 +164,14 @@ class RadarDSP:
         if (self.run_count < self.config.slow_time_fft_size):
             return
 
-        np.savez('data', buff=self.circular_buff, buff_mti=self.circular_buff_mti)
+        np.savez('server_data/data' + str(self.file_count), buff=self.circular_buff, buff_mti=self.circular_buff_mti)
+        self.file_count += 1
+
+        print ("Saved buffer " + str(self.run_count))
+
+        self.run_count = 0
+
+        return
 
         exit(-1)
 
