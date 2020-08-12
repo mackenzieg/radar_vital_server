@@ -102,7 +102,7 @@ max_bin = 0
 
 prec_bins = []
 
-for file in glob.glob("doll_data/data*.npz"):
+for file in glob.glob("person_data/data*.npz"):
     #file_path = "server_data/data1.npz"
     print ("Processing file: " +str(file))
 
@@ -137,10 +137,11 @@ for file in glob.glob("doll_data/data*.npz"):
 
     plt.show()
 
-    #plt.xlabel("Time (s)")
 
-    #plt.show()
-
-#plt.hist(prec_bins, bins=(max_bin - min_bin))
+bins = np.arange(np.min(prec_bins), np.max(prec_bins) + 2) - 0.5
+#plt.hist(prec_bins, bins=bins, density=True)
+#plt.xlabel("Bin number")
+#plt.ylabel("Probability")
+#plt.show()
 print (prec_bins)
 

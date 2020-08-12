@@ -2,7 +2,7 @@
 class RadarConfig:
 
     # Time in seconds to buffer slow time data
-    slow_time_buffer_sec = 32 * 1
+    slow_time_buffer_sec = 20
 
     def __init__(self, radar_config_json):
         self.update_config(radar_config_json)

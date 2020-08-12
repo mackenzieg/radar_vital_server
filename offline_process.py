@@ -122,7 +122,7 @@ corr_idx = tools.auto_corr(st_buffer_mti, frame_rate)
 print ("Correlation: " + str(corr_idx))
 
 max_ptp_idx = tools.track_target(st_buffer_mti)
-print ("Predicted range: " + str(max_ptp_idx))
+print ("Tracking range prediction: " + str(max_ptp_idx))
 
 slow_time = st_buffer[max_ptp_idx + 2]
 
@@ -132,12 +132,23 @@ plt.colorbar()
 plt.xlabel("Time (s)")
 plt.ylabel("Bin number")
 
-fig, ax = plt.subplots(10)
 
 print ("----------------------------------")
 range_bin = 2
+
+predicted_range = corr_idx[0]
+
+fig, ax = plt.subplots((range_bin * 2 + 1) * 2)
+
+# Check if lag is None
+if (corr_idx[2] == None):
+    print ("No usable data found revert to simple fft")
+    exit(-1)
+
+from statsmodels.tsa.stattools import pacf
+
 i = 0
-for x in range(corr_idx[0] - range_bin, corr_idx[0] + range_bin + 1):
+for x in range(predicted_range - range_bin, predicted_range + range_bin + 1):
     ax[i].plot(st_xvals, st_buffer_mti[x].real)
     ax[i].set_title("Bin: " + str(x))
     i += 1
@@ -165,7 +176,6 @@ for x in range(corr_idx[0] - range_bin, corr_idx[0] + range_bin + 1):
     # Find peaks of highest correlation coefficients
     #peaks = find_peaks_cwt(mirror_acorr, ranges)
     peaks = find_peaks(mirror_acorr, distance=max_br_hz-1, prominence=0.4)
-    peaks = peaks[0]
 
     # Remove peaks with lag time below fs
     #peaks = peaks[peaks > frame_rate]
@@ -189,7 +199,9 @@ for x in range(corr_idx[0] - range_bin, corr_idx[0] + range_bin + 1):
     #r = acorr[lag - 1]
 
 
-    ax[i].plot(mirror_acorr)
+    if (predicted_range == x):
+        print (peaks[0])
+        ax[i].plot(peaks[0], mirror_acorr[peaks[0]], 'xr')
     i += 1
 
 #for x in range(max_ptp_idx + 1, max_ptp_idx + range_bin + 2):
@@ -211,9 +223,11 @@ for x in range(corr_idx[0] - range_bin, corr_idx[0] + range_bin + 1):
 #    ax[i].set_title("Real bin: " + str(x) + " diff")
 #    i += 1
 
-filtered, zeros, rate = tools.resp(slow_time, frame_rate)
+filtered, zeros, rate, rate_idx = tools.resp(slow_time, frame_rate)
 print ("Resp rates: ")
-print (list(rate))
+print (list(rate * 60))
+print ("Respiration indexes: ")
+print (list(rate_idx))
 
 num_steps = 512
 scales = np.arange(1, num_steps + 1)
