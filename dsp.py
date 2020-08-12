@@ -5,6 +5,7 @@ from scipy.signal import medfilt
 from scipy.signal import find_peaks
 from scipy.signal import savgol_filter
 from scipy.signal import butter, lfilter
+from statistics import mode
 import numpy as np
 import collections
 
@@ -112,7 +113,7 @@ class RadarDSP:
             self.ax[x].plot(self.st_xvals, self.circular_buff_mti[i].real)
             self.ax[x].set_title("Bin: " + str(i))
             x += 1
-            filtered = tools.butter_filter(data=self.circular_buff_mti[i].real, cutoff=[1.5], fs=self.config.frame_rate, btype='low')
+            filtered = tools.butter_filter(data=self.circular_buff_mti[i].real, cutoff=[1.1], fs=self.config.frame_rate, btype='low')
             self.ax[x].plot(self.st_xvals, filtered)
             self.ax[x].set_title("Bin: " + str(i) + " filtered")
             x += 1
@@ -120,6 +121,7 @@ class RadarDSP:
         self.ax[x].plot(acorr)
         if (len(peaks) > 0):
             self.ax[x].plot(peaks, acorr[peaks], 'xr')
+
         self.ax[x].set_title("Correlation Spectrum")
         x += 1
 
@@ -131,20 +133,19 @@ class RadarDSP:
             self.ax[x].cla()
             x += 1
 
-        self.prediction_window[self.prediction_idx] = lag
-        self.last_predicted_range = object_idx
+        self.prediction_window[self.prediction_idx] = object_idx
 
-        self.prediction_window += 1
-        if (self.prediction_idx % len(self.prediction_window) == len(self.prediction_window)):
+        self.prediction_idx += 1
+        if (self.prediction_idx == len(self.prediction_window)):
             self.prediction_idx = 0
 
-        if (np.average(self.prediction_window) == 0):
-            print ("No object present")
-
-        print (object_idx, r_value, lag)
+        print ("-------------------------------------------------------")
+        print ("Correlation: (idx: {}, r: {}, lag: {})".format(object_idx, r_value, lag))
 
         if (r_value < 0.5):
             return
+
+        self.last_predicted_range = object_idx
 
         predicted_bpm = ((60 / (lag / self.config.frame_rate))*1.25)
 
