@@ -35,7 +35,7 @@ def peak_detect(data, fs, min_rpm=6, max_rpm=35, prominence=0.4, method='find_pe
     peaks = []
     if (method == 'find_peaks'):
         peaks = find_peaks(data, distance=max_br_samples-1, prominence=prominence)[0]
-    elif (method = 'find_peaks_cwt'):
+    elif (method == 'find_peaks_cwt'):
         max_br_samples = fs * (60 // min_rpm) + 1
         ranges = np.arange(min_br_samples, max_br_samples)
 
@@ -113,6 +113,9 @@ def auto_corr(data_matrix, fs, starting_prediction=None, delta_bin=7, lin_corr_t
 
         # Center autocorrelation coefficients with lag 1 to index 0
         acorr = result[n//2 + 1:] / (signal_variance * np.arange(n-1, n//2, -1))
+
+        # Linear detrend signal
+        acorr = detrend(acorr, type='linear')
 
         # Perform filtering on coefficient spectrum if option enabled
         if (filter_corr_vals):

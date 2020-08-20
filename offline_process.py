@@ -162,6 +162,9 @@ for x in range(predicted_range - range_bin, predicted_range + range_bin + 1):
     # Center autocorrelation coefficients with lag 1 to index 0
     acorr = result[n//2 + 1:] / (signal.var() * np.arange(n-1, n//2, -1))
 
+    acorr = detrend(acorr, type='linear')
+
+
     # Mirror array to perform more accurate peak detection
     mirror_acorr = np.concatenate((acorr[::-1], acorr))
 
@@ -198,10 +201,13 @@ for x in range(predicted_range - range_bin, predicted_range + range_bin + 1):
 
     #r = acorr[lag - 1]
 
+    ax[i].plot(mirror_acorr)
 
     if (predicted_range == x):
         print (peaks[0])
+
         ax[i].plot(peaks[0], mirror_acorr[peaks[0]], 'xr')
+
     i += 1
 
 #for x in range(max_ptp_idx + 1, max_ptp_idx + range_bin + 2):
