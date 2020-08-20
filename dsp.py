@@ -16,7 +16,9 @@ import tools
 
 class RadarDSP:
 
-    bin_range = 1
+    bin_range = 0
+
+    save_data = True
 
     def __init__(self, radar_config):
         self.update_config(radar_config)
@@ -44,10 +46,13 @@ class RadarDSP:
 
         self.run_count = 0
 
+        self.file_count = 0
+
         self.window_count = 0
         self.window_size = radar_config.frame_rate * 1
 
-        self.fig, self.ax = plt.subplots((self.bin_range * 2 + 1)*2 + 1)
+        self.num_graphs = (self.bin_range * 2 + 1) + 2
+        self.fig, self.ax = plt.subplots(self.num_graphs)
 
         self.svd_denoiser = Denoiser()
         self.emd = EMD()
@@ -56,7 +61,7 @@ class RadarDSP:
         self.corr_bin_range = round(radar_config.range_resolution * (-40) + 9)
 
         self.prediction_idx = 0
-        self.prediction_window = np.zeros(8)
+        self.prediction_window = np.zeros(10)
 
         plt.ion()
 
@@ -90,6 +95,14 @@ class RadarDSP:
         if (self.run_count < self.config.slow_time_fft_size):
             return
 
+        if (self.save_data and self.run_count % self.config.slow_time_fft_size == 0):
+            # Remove clutter
+            for i in range(len(self.mti_image)):
+                self.circular_buff_mti[i] = self.circular_buff[i] - np.average(self.circular_buff[i])
+            np.savez('server_data/data' + str(self.file_count), buff=self.circular_buff)
+            self.file_count += 1
+
+
         self.window_count += 1
         if (self.window_count % self.window_size != self.window_size - 1):
             return
@@ -113,41 +126,44 @@ class RadarDSP:
             self.ax[x].plot(self.st_xvals, self.circular_buff_mti[i].real)
             self.ax[x].set_title("Bin: " + str(i))
             x += 1
-            filtered = tools.butter_filter(data=self.circular_buff_mti[i].real, cutoff=[1.1], fs=self.config.frame_rate, btype='low')
-            self.ax[x].plot(self.st_xvals, filtered)
-            self.ax[x].set_title("Bin: " + str(i) + " filtered")
-            x += 1
+            #filtered = tools.butter_filter(data=self.circular_buff_mti[i].real, cutoff=[1.1], fs=self.config.frame_rate, btype='low')
+            #self.ax[x].plot(self.st_xvals, filtered)
+            #self.ax[x].set_title("Bin: " + str(i) + " filtered")
 
-        self.ax[x].plot(acorr)
+        self.ax[-2].plot(acorr)
         if (len(peaks) > 0):
-            self.ax[x].plot(peaks, acorr[peaks], 'xr')
+            self.ax[-2].plot(peaks, acorr[peaks], 'xr')
 
-        self.ax[x].set_title("Correlation Spectrum")
+        self.ax[-2].set_title("Correlation Spectrum")
         x += 1
+
+        self.prediction_window = np.roll(self.prediction_window, -1)
+        self.prediction_window[-1] = self.prediction_window[-2]
+
+        self.ax[-1].plot(self.prediction_window)
+        self.ax[-1].set_title("Predicted RPM")
+        self.ax[-1].set_ylim([0, 35])
+
+        print ("-------------------------------------------------------")
+        print ("Correlation: (idx: {}, r: {}, lag: {})".format(object_idx, r_value, lag))
+
 
         plt.draw()
         plt.pause(0.000001)
 
         x = 0
-        for i in range((self.bin_range*2 + 1) * 2 + 1):
+        for i in range(self.num_graphs):
             self.ax[x].cla()
             x += 1
 
-        self.prediction_window[self.prediction_idx] = object_idx
-
-        self.prediction_idx += 1
-        if (self.prediction_idx == len(self.prediction_window)):
-            self.prediction_idx = 0
-
-        print ("-------------------------------------------------------")
-        print ("Correlation: (idx: {}, r: {}, lag: {})".format(object_idx, r_value, lag))
-
-        if (r_value < 0.5):
+        if (r_value < 0.45):
             return
 
         self.last_predicted_range = object_idx
 
         predicted_bpm = ((60 / (lag / self.config.frame_rate))*1.25)
+
+        self.prediction_window[-1] = predicted_bpm
 
         print ("Object predicted index: " + str(object_idx))
         print ("Correlation predicted bpm: " + str(predicted_bpm))

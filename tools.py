@@ -3,6 +3,7 @@ from scipy.signal import find_peaks_cwt
 from scipy.signal import find_peaks
 from scipy.stats import linregress
 from scipy.fftpack import fft
+from scipy.signal import detrend
 import numpy as np
 
 def _butter_filter(cutoff, btype, fs, order=5):
@@ -34,7 +35,7 @@ def peak_detect(data, fs, min_rpm=6, max_rpm=35, prominence=0.4, method='find_pe
     peaks = []
     if (method == 'find_peaks'):
         peaks = find_peaks(data, distance=max_br_samples-1, prominence=prominence)[0]
-    else:
+    elif (method = 'find_peaks_cwt'):
         max_br_samples = fs * (60 // min_rpm) + 1
         ranges = np.arange(min_br_samples, max_br_samples)
 
@@ -42,7 +43,7 @@ def peak_detect(data, fs, min_rpm=6, max_rpm=35, prominence=0.4, method='find_pe
 
     return peaks
 
-def fft_bpm(data, fs, min_rpm=6, max_rpm=35, use_imag=True):
+def fft_bpm(data, fs, filter_cutoff=None, min_rpm=6, max_rpm=35, use_imag=True):
     N = len(data)
 
     f_resolution = fs / N
@@ -52,6 +53,9 @@ def fft_bpm(data, fs, min_rpm=6, max_rpm=35, use_imag=True):
 
     if (not use_imag):
         data = data.real
+
+    if (filter_cutoff is not None):
+        data = butter_filter(data=data, cutoff=filter_cutoff, fs=fs, btype='low')
 
     data_ac = data - np.average(data)
 
@@ -95,19 +99,22 @@ def auto_corr(data_matrix, fs, starting_prediction=None, delta_bin=7, lin_corr_t
         if (pre_corr_processing):
             signal = butter_filter(data=signal, cutoff=[4.0], fs=fs, btype='low')
 
-        signal -= np.mean(signal)
+        # Remove DC bias
+        signal = detrend(signal)
         n = signal.size
-
-        result = np.correlate(signal, signal, mode='same')
 
         signal_variance = signal.var()
 
+        # Remove signals with no variance
         if (signal_variance == 0):
             continue
 
-        # Center autocorrelation coefficients with lag 1 to index 0
-        acorr = result[n//2 + 1:] / (signal.var() * np.arange(n-1, n//2, -1))
+        result = np.correlate(signal, signal, mode='same')
 
+        # Center autocorrelation coefficients with lag 1 to index 0
+        acorr = result[n//2 + 1:] / (signal_variance * np.arange(n-1, n//2, -1))
+
+        # Perform filtering on coefficient spectrum if option enabled
         if (filter_corr_vals):
             acorr = butter_filter(acorr, cutoff=[corr_filter_cutoff], fs=fs, btype='low')
 

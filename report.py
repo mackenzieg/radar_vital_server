@@ -29,9 +29,9 @@ t = np.arange(duration)
 f0 = 0.5
 fs = 32
 
-#signal = np.sin(2*np.pi*t*(f0 / fs))
+signal = np.cos(2*np.pi*t*(f0 / fs))
 #signal += np.random.normal(0, 1, duration)
-signal = np.random.normal(0, 0.1, duration)
+#signal = np.random.normal(0, 0.1, duration)
 
 signal -= np.mean(signal)
 
